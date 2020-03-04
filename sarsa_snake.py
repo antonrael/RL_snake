@@ -14,10 +14,12 @@ def parse_args():
     parser.add_argument('--explore_method', type=str)
     parser.add_argument('--n_episode', type=int)
     parser.add_argument('--training', type=bool)
+    parser.add_argument('--n_env', type=int)
     args = parser.parse_args()
     return args
 
-import snake_gym
+import snake_gym_env_1
+import snake_gym_env_2
 
 args = parse_args()
 # Meta parameters for the RL agent
@@ -26,7 +28,7 @@ tau = init_tau = 1
 tau_inc = 0.01
 gamma = 0.99
 epsilon = 0.5
-epsilon_decay = 0.99995
+epsilon_decay = 0.999995
 verbose = True
 
 # Define types of algorithms
@@ -42,6 +44,8 @@ explore_method = args.explore_method
 n_episode = args.n_episode
 train = args.training
 print(rl_algorithm)
+
+n_env = args.n_env
 # Draw a softmax sample
 def softmax(q):
     assert tau >= 0.0
@@ -111,7 +115,10 @@ def main():
 
     np.random.RandomState(42)
 
-    env = snake_gym.Snake()
+    if n_env==1:
+        env = snake_gym_env_1.Snake()
+    if n_env==2:
+        env = snake_gym_env_2.Snake()
 
     # Recover State-Action space size
     n_a = env.action_space.n
@@ -203,7 +210,7 @@ def main():
                 greedy_success_rate_monitor[i_episode-1,0], greedy_discounted_return_monitor[i_episode-1,0]= evaluate_policy(q_table,env,eval_steps,max_horizon,GREEDY)
                 behaviour_success_rate_monitor[i_episode-1,0], behaviour_discounted_return_monitor[i_episode-1,0] = evaluate_policy(q_table,env,eval_steps,max_horizon,explore_method)
                 if verbose:
-                    print("Episode: {0}\t Num_Steps: {1:>4}\tTotal_Return: {2:>5.2f}\tFinal_Reward: {3}\tEpsilon: {4:.3f}\tSuccess Rate: {5:.3f}\tLast_100: {6}".format(i_episode, i_step, total_return, r, epsilon,greedy_success_rate_monitor[i_episode-1,0],last_100))
+                    print("Episode: {0}\t Num_Steps: {1:>4}\tTotal_Return: {2:>5.2f}\tEpsilon: {3:.3f}".format(i_episode, i_step, total_return, epsilon))
                     #print "Episode: {0}\t Num_Steps: {1:>4}\tTotal_Return: {2:>5.2f}\tTermR: {3}\ttau: {4:.3f}".format(i_episode, i_step, total_return, r, tau)
 
 
@@ -222,19 +229,19 @@ def main():
 
 
         q_flat = q_table.flatten()
-        np.save(f'q_saved_{rl_algorithm}_{explore_method}_{n_episode}_episodes.npy', q_flat)
+        np.save(f'q_saved_{rl_algorithm}_{explore_method}_{n_episode}_episodes_env_{n_env}.npy', q_flat)
 
         #Graph of results
         plt.xlabel('Episodes')
         plt.ylabel('Score')
-        plt.title(f'Results with {rl_algorithm} algorithm and {explore_method} explore method')
+        plt.title(f'Results with {rl_algorithm} algorithm and {explore_method} explore method in environment {n_env}')
         plt.plot(X,Y,'ro',label='Total_return')
         plt.plot(X,Y_mean,'b+',label='Mean return')
         plt.legend()
-        plt.savefig(f'graph_{rl_algorithm}_{explore_method}_{n_episode}_episodes.png')
+        plt.savefig(f'graph_{rl_algorithm}_{explore_method}_{n_episode}_episodes_env_{n_env}.png')
         plt.show()
 
-    q_table = np.load(f'q_saved_{rl_algorithm}_{explore_method}_{n_episode}_episodes.npy').reshape(dim)
+    q_table = np.load(f'q_saved_{rl_algorithm}_{explore_method}_{n_episode}_episodes_env_{n_env}.npy').reshape(dim)
     print(q_table)
     actions = []
     rew = []
