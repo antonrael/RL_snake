@@ -5,8 +5,21 @@ from collections import deque
 import pandas as pd
 import snake
 import matplotlib.pyplot as plt
+import argparse
+
+def parse_args():
+    """Parse input arguments."""
+    parser = argparse.ArgumentParser(description='Multiple object tracker')
+    parser.add_argument('--rl_algorithm', type=str)
+    parser.add_argument('--explore_method', type=str)
+    parser.add_argument('--n_episode', type=int)
+    parser.add_argument('--training', type=bool)
+    args = parser.parse_args()
+    return args
 
 import snake_gym
+
+args = parse_args()
 # Meta parameters for the RL agent
 alpha = 0.1
 tau = init_tau = 1
@@ -24,9 +37,11 @@ SOFTMAX = "softmax"
 GREEDY = "greedy"
 
 # Choose methods for learning and exploration
-rl_algorithm = Q_LEARNING
-explore_method = SOFTMAX
-
+rl_algorithm = args.rl_algorithm
+explore_method = args.explore_method
+n_episode = args.n_episode
+train = args.training
+print(rl_algorithm)
 # Draw a softmax sample
 def softmax(q):
     assert tau >= 0.0
@@ -64,6 +79,7 @@ def q_learning_update(q,s,a,r,s_prime):
 def evaluate_policy(q,env,n,h,explore_type):
     success_rate = 0.0
     mean_return = 0.0
+
 
     for i in range(n):
         discounted_return = 0.0
@@ -103,7 +119,6 @@ def main():
 
 
     # Experimental setup
-    n_episode = 1000000
     print("n_episode ", n_episode)
     max_horizon = 500
     eval_steps = 10
@@ -111,7 +126,6 @@ def main():
     # Monitoring perfomance
     window = deque(maxlen=100)
     last_100 = 0
-    train = True
 
     dim = list_s[:].tolist()
     dim.append(n_a)
@@ -130,10 +144,17 @@ def main():
 
         X=[]
         Y=[]
+        Y_mean=[]
+
+        #init parameters graph
+        mean_return = 0.0
+        interval_graph = 50
+
         # Train for n_episode
         for i_episode in range(n_episode):
             # Reset a cumulative reward for this episode
             total_return = 0.0
+            
 
             # Start a new episode and sample the initial state
             s = env.reset()
@@ -192,21 +213,29 @@ def main():
             tau = init_tau + i_episode * tau_inc
 
             #draw graph
-            if i_episode%50==0:
+            mean_return+=total_return
+            if i_episode%interval_graph==0:
                 X.append(i_episode)
                 Y.append(total_return)
+                Y_mean.append(mean_return/interval_graph)
+                mean_return=0
 
 
         q_flat = q_table.flatten()
-        np.save("q_saved.npy", q_flat)
+        np.save(f'q_saved_{rl_algorithm}_{explore_method}_{n_episode}_episodes.npy', q_flat)
+
+        #Graph of results
         plt.xlabel('Episodes')
         plt.ylabel('Score')
-        plt.title('Total result of each episode')
-        plt.plot(X,Y,'ro')
+        plt.title(f'Results with {rl_algorithm} algorithm and {explore_method} explore method')
+        plt.plot(X,Y,'ro',label='Total_return')
+        plt.plot(X,Y_mean,'b+',label='Mean return')
+        plt.legend()
+        plt.savefig(f'graph_{rl_algorithm}_{explore_method}_{n_episode}_episodes.png')
         plt.show()
 
-    q_table = np.load("q_saved.npy").reshape(dim)
-
+    q_table = np.load(f'q_saved_{rl_algorithm}_{explore_method}_{n_episode}_episodes.npy').reshape(dim)
+    print(q_table)
     actions = []
     rew = []
     bonus = []
