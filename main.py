@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from collections import deque
 import pandas as pd
-import snake
+import snake_game
 import matplotlib.pyplot as plt
 import argparse
 
@@ -28,7 +28,7 @@ tau = init_tau = 1
 tau_inc = 0.01
 gamma = 0.99
 epsilon = 0.5
-epsilon_decay = 0.999995
+epsilon_decay = 0.99998
 verbose = True
 
 # Define types of algorithms
@@ -123,6 +123,9 @@ def main():
     # Recover State-Action space size
     n_a = env.action_space.n
     list_s = env.observation_space.nvec
+    dim = list_s[:].tolist()
+    dim.append(n_a)
+
 
 
     # Experimental setup
@@ -134,8 +137,6 @@ def main():
     window = deque(maxlen=100)
     last_100 = 0
 
-    dim = list_s[:].tolist()
-    dim.append(n_a)
 
     if train:
         greedy_success_rate_monitor = np.zeros([n_episode,1])
@@ -234,7 +235,7 @@ def main():
         #Graph of results
         plt.xlabel('Episodes')
         plt.ylabel('Score')
-        plt.title(f'Results with {rl_algorithm} algorithm and {explore_method} explore method in environment {n_env}')
+        plt.title(f'Results with {rl_algorithm} algorithm and {explore_method} in env {n_env}')
         plt.plot(X,Y,'ro',label='Total_return')
         plt.plot(X,Y_mean,'b+',label='Mean return')
         plt.legend()
