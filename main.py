@@ -37,6 +37,7 @@ Q_LEARNING = "Q_learning"
 EPSILON_GREEDY = "epsilon_greedy"
 SOFTMAX = "softmax"
 GREEDY = "greedy"
+VBDE_EPSILON = "vbde_epsilon"
 
 # Choose methods for learning and exploration
 rl_algorithm = args.rl_algorithm
@@ -45,7 +46,12 @@ n_episode = args.n_episode
 train = args.training
 print(rl_algorithm)
 
+#Parameters for VBDE
+delta = 0.25
+sigma = 5.0
 n_env = args.n_env
+
+
 # Draw a softmax sample
 def softmax(q):
     assert tau >= 0.0
@@ -60,11 +66,26 @@ def act_with_softmax(s, q):
     return np.where(np.random.rand() < cumsum_a)[0][0]
 
 # Act with epsilon greedy
-def act_with_epsilon_greedy(s, q):
+def act_with_epsilon_greedy(s, q, e):
     a = np.argmax(q[s])
-    if np.random.rand() < epsilon:
+    if np.random.rand() < e:
         a = np.random.randint(q.shape[-1])
     return a
+
+def act_with_epsilon_softmax(s,q,e):
+    a = np.argmax(q[s])
+    if np.random.rand() < e:
+        a = act_with_softmax(s,q)
+    return a
+
+#Update value of the epsilon table for VBED
+def update_epsilon_vbde(old_q,new_q,old_epsilon):
+    if old_q==0 and new_q==0:
+        return old_epsilon
+    delta_q = abs(old_q-new_q)
+    expo = np.exp(-delta_q/sigma)
+    f = (1-expo)/(1+expo)
+    return delta * f + (1-delta)*old_epsilon
 
 # Compute SARSA update
 def sarsa_update(q,s,a,r,s_prime,a_prime):
@@ -79,34 +100,6 @@ def q_learning_update(q,s,a,r,s_prime):
     td = r + gamma * np.max(q[s_prime]) - q[base]
     return q[base] + alpha * td
 
-# Evaluate a policy on n runs
-def evaluate_policy(q,env,n,h,explore_type):
-    success_rate = 0.0
-    mean_return = 0.0
-
-
-    for i in range(n):
-        discounted_return = 0.0
-        s = env.reset()
-
-        for step in range(h):
-            if explore_type == GREEDY:
-                s,r, done, info = env.step(np.argmax(q[s]))
-            elif explore_type == EPSILON_GREEDY:
-                s,r, done, info = env.step(act_with_epsilon_greedy(s,q))
-            elif explore_type == SOFTMAX:
-                s,r, done, info = env.step(act_with_softmax(s,q))
-            else:
-                raise ValueError("Wrong Explore Method in evaluation:".format(explore_type))
-
-            discounted_return += np.power(gamma,step) * r
-
-            if done or step == h-1:
-                success_rate += float(r)/n
-                mean_return += float(discounted_return)/n
-                break
-
-    return success_rate, mean_return
 
 def main():
 
@@ -133,9 +126,6 @@ def main():
     max_horizon = 500
     eval_steps = 10
 
-    # Monitoring perfomance
-    window = deque(maxlen=100)
-    last_100 = 0
 
 
     if train:
@@ -149,6 +139,9 @@ def main():
 
         q_table = np.zeros(dim)
         env.reset()
+
+        # Init epsilon table for VBDE
+        epsilon_table = np.ones(list_s)
 
         X=[]
         Y=[]
@@ -171,7 +164,9 @@ def main():
             if explore_method == SOFTMAX:
                 a = act_with_softmax(s, q_table)
             elif explore_method == EPSILON_GREEDY:
-                a = act_with_epsilon_greedy(s, q_table)
+                a = act_with_epsilon_greedy(s, q_table,epsilon)
+            elif explore_method == VBDE_EPSILON:
+                a = act_with_epsilon_softmax(s,q_table,epsilon_table[s])
             else:
                 raise ValueError("Wrong Explore Method:".format(explore_method))
 
@@ -179,16 +174,21 @@ def main():
             for i_step in range(max_horizon):
                 # Act
                 s_prime, r, done, info = env.step(a)
-                total_return += np.power(gamma,i_step) *r
+                total_return += r
 
                 # Select an action
                 if explore_method == SOFTMAX:
                     a_prime = act_with_softmax(s_prime, q_table)
                 elif explore_method == EPSILON_GREEDY:
-                    a_prime = act_with_epsilon_greedy(s_prime, q_table)
+                    a_prime = act_with_epsilon_greedy(s_prime, q_table,epsilon)
+                elif explore_method == VBDE_EPSILON:
+                    a_prime = act_with_epsilon_softmax(s_prime, q_table,epsilon_table[s_prime])
                 else:
                     raise ValueError("Wrong Explore Method:".format(explore_method))
 
+                #Store old q value
+                base = s + tuple([a])
+                old_q = q_table[base]
                 # Update a Q value table
                 if rl_algorithm == SARSA:
                     base = s + tuple([a])
@@ -199,19 +199,23 @@ def main():
                 else:
                     raise ValueError("Wrong RL algorithm:".format(rl_algorithm))
 
+                #Update epsilon_table
+                if explore_method == VBDE_EPSILON:
+                    new_q = q_table[base]
+                    epsilon_table[s] = update_epsilon_vbde(old_q,new_q,epsilon_table[s])
+
                 # Transition to new state
                 s = s_prime
                 a = a_prime
                 if done:
+                    total_return+=0.1
                     break
             if i_episode % 100 == 0:
-                window.append(r)
-                last_100 = window.count(1)
-
-                greedy_success_rate_monitor[i_episode-1,0], greedy_discounted_return_monitor[i_episode-1,0]= evaluate_policy(q_table,env,eval_steps,max_horizon,GREEDY)
-                behaviour_success_rate_monitor[i_episode-1,0], behaviour_discounted_return_monitor[i_episode-1,0] = evaluate_policy(q_table,env,eval_steps,max_horizon,explore_method)
                 if verbose:
-                    print("Episode: {0}\t Num_Steps: {1:>4}\tTotal_Return: {2:>5.2f}\tEpsilon: {3:.3f}".format(i_episode, i_step, total_return, epsilon))
+                    if explore_method == VBDE_EPSILON:
+                        print("Episode: {0}\t Num_Steps: {1:>4}\tMean_Return:{2:>5.2f}\tTotal_Return: {3:>5.2f}\tEpsilon: {4:.3f}".format(i_episode, i_step,mean_return, total_return, np.mean(epsilon_table)))
+                    else :    
+                        print("Episode: {0}\t Num_Steps: {1:>4}\tMean_Return:{2:>5.2f}\tTotal_Return: {3:>5.2f}\tEpsilon: {4:.3f}".format(i_episode, i_step,mean_return, total_return, epsilon))
                     #print "Episode: {0}\t Num_Steps: {1:>4}\tTotal_Return: {2:>5.2f}\tTermR: {3}\ttau: {4:.3f}".format(i_episode, i_step, total_return, r, tau)
 
 
@@ -221,11 +225,11 @@ def main():
             tau = init_tau + i_episode * tau_inc
 
             #draw graph
-            mean_return+=total_return
+            mean_return+=total_return/interval_graph
             if i_episode%interval_graph==0:
                 X.append(i_episode)
                 Y.append(total_return)
-                Y_mean.append(mean_return/interval_graph)
+                Y_mean.append(mean_return)
                 mean_return=0
 
 
