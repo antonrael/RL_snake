@@ -66,7 +66,6 @@ class Snake(gym.Env):
         return curr_obs
 
     def step(self, action):
-        reward = 0  # (15-np.sqrt((self.snake_head[0]-self.bonus[0])**2+(self.snake_head[1]-self.bonus[1])**2))/500
         self.direction += action+3
         self.direction = self.direction % 4
         if self.direction == 0:
@@ -78,8 +77,10 @@ class Snake(gym.Env):
         if self.direction == 3:
             new_sh = (self.snake_head[0], self.snake_head[1] + 1)
         if new_sh[0] < 0 or new_sh[0] >= side or new_sh[1] < 0 or new_sh[1] >= side:
-            return self.get_obs(), -0.1, True, {}
-
+            return self.get_obs(), -1, True, {}
+        old_dist = np.sqrt((self.snake_head[0]-self.bonus[0])**2+(self.snake_head[1]-self.bonus[1])**2)/500
+        new_dist = np.sqrt((new_sh[0]-self.bonus[0])**2+(new_sh[1]-self.bonus[1])**2)/500
+        reward = old_dist-new_dist
 
         if new_sh == self.bonus:
             reward += 1
@@ -94,10 +95,10 @@ class Snake(gym.Env):
         self.snake = [self.snake_head] + snake_copy
 
         if new_sh in self.snake:
-            return self.get_obs(), -0.1, True, {}
+            return self.get_obs(), -1, True, {}
 
         self.snake_head = new_sh
-        return self.get_obs(), 0, False, {}
+        return self.get_obs(), reward, False, {}
 
     def render(self, mode='human'):
         print('-'*50)
